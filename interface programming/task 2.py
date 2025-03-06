@@ -6,10 +6,23 @@ bg = np.zeros((600,1200,3), np.uint8)
 #cv2.shape(background image, (x,y), size, BGR colour, thickness)
 
 #sky
-cv2.rectangle(bg, (0,0), (1200, 300), (255,195,55), -1)
+cv2.rectangle(bg, (0,0), (1200, 300), (225,165,55), -1)
+
+#clouds
+cld1 = np.array([[30,80],[50,50],[80,80],[70,70]], np.int32)
+cld1 = cld1.reshape((-1,1,2))
+cv2.polylines(bg,[cld1],True,(255,255,255), 100)
+
+cld2 = np.array([[290,80],[320,50],[380,80],[340,70],[375,50]], np.int32)
+cld2 = cld2.reshape((-1,1,2))
+cv2.polylines(bg,[cld2],True,(255,255,255), 60)
+
+cld3 = np.array([[1000,80],[1020,50],[1080,80],[1040,70],[1075,50]], np.int32)
+cld3 = cld3.reshape((-1,1,2))
+cv2.polylines(bg,[cld3],True,(255,255,255), 100)
 
 #pitch
-cv2.rectangle(bg, (0,600), (1200, 300), (55,205,55), -1)
+cv2.rectangle(bg, (0,600), (1200, 300), (32,128,2), -1)
 cv2.line(bg,(0,600), (200,360), (255,255,255), 5)
 cv2.line(bg,(1200,600), (1000,360), (255,255,255), 5)
 cv2.line(bg,(0,360), (1200,360), (255,255,255), 5)
@@ -159,9 +172,24 @@ cv2.line(bg,(310,120), (315,346), (255,255,255), 1)
 
 
 #ball
-#cv2.circle(bg,(247,63), 32, (0,0,225), -1)
+cv2.ellipse(bg,(350,163),(22,28),-30,360,0,(255,255,255),-1)
+cv2.ellipse(bg,(350,163),(22,28),-30,360,0,(0,0,0),1)
+#cv2.circle(bg,(350,463), 24, (255,255,255), -1)
+#cv2.circle(bg,(350,463), 24, (0,0,0), 1)
 
+#Name
+font = cv2.FONT_HERSHEY_SIMPLEX
+cv2.putText(bg,' - - - - - - James Fletcher - - - - - - ',(413,125), font, 0.5,(0,0,0),1,cv2.LINE_AA)
 
+#dirt patch
+dirt = np.array([[570,450],[610,500],[670,480],[650,470]], np.int32)
+dirt = dirt.reshape((-1,1,2))
+cv2.polylines(bg,[dirt],True,(33,67,101), 100)
+
+#dirt patch
+dirtier = np.array([[620,470],[650,500],[670,480],[650,470]], np.int32)
+dirtier = dirtier.reshape((-1,1,2))
+cv2.polylines(bg,[dirtier],True,(15,75,130), 30)
 
 
 cv2.imshow('Football',bg)
