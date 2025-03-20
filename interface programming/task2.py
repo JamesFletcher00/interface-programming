@@ -8,20 +8,7 @@ brown = (15, 75, 130)
 dark_brown = (33, 67, 101)
 black = (0,0,0)
 
-class Scene:
-    def __init__(self, width=1200, height=600):
-        self.bg = np.zeros((height, width, 3), np.uint8)
-        self.elements = []
 
-    def add_element(self, element):
-        self.elements.append(element)
-
-    def render(self):
-        for element in self.elements:
-            element.draw(self.bg)
-        cv2.imshow('Football', self.bg)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
 
 class Sky:
     def draw(self, bg):
@@ -214,9 +201,22 @@ class Name:
         cv2.putText(bg,' - - - - - - James Fletcher - - - - - - ',(413,125), font, 0.5,black,1,cv2.LINE_AA)
 
 class Ball:
+    def __init__(self, x=350,y=163):
+        self.positions = [(425, 290), (400, 250), (375, 205), (350, 163)]
+        self.index = 0  # Start at the first position
+
+    def update_position(self, frame_count):
+        """Change position every 10 frames by cycling through the list"""
+        if frame_count % 10 == 0:
+            self.index = (self.index + 1) % len(self.positions)  # Cycle through positions
+
     def draw(self, bg):
-        cv2.ellipse(bg, (350, 163), (22, 28), -30, 0, 360, white, -1)
-        cv2.ellipse(bg, (350, 163), (22, 28), -30, 0, 360, black, 1)
+        x1, y1 = self.positions[self.index]     #Position data for white fill
+        x2, y2 = self.positions[self.index]  #Position data for black outline
+
+        cv2.ellipse(bg, (x1, y1), (22, 28), -30, 0, 360, white, -1)  # White fill
+        cv2.ellipse(bg, (x2, y2), (22, 28), -30, 0, 360, black, 1)   # Black outline
+        
 
 class DirtPatch:
     def __init__(self, points, color, thickness):
@@ -226,6 +226,34 @@ class DirtPatch:
 
     def draw(self, bg):
         cv2.polylines(bg, [self.points], True, self.color, self.thickness)
+
+class Scene:
+    def __init__(self, width=1200, height=600):
+        self.bg = np.zeros((height, width, 3), np.uint8)
+        self.elements = []
+        self.width = width
+        self.height = height
+        self.ball = Ball()  # One persistent Ball object
+        self.frame_count = 0
+
+    def add_element(self, element):
+        self.elements.append(element)
+
+    def update(self):
+        self.frame_count += 1
+        self.ball.update_position(self.frame_count)  # Move ball if needed
+    
+    def draw(self):
+        frame = self.bg.copy()  # Start with a clean background
+        
+        # Draw all scene elements
+        for element in self.elements:
+            element.draw(frame)
+        
+        self.ball.draw(frame)  # Draw ball on top
+        
+        return frame
+
 
 # Initialize scene
 scene = Scene()
@@ -237,10 +265,19 @@ scene.add_element(Cloud([[290, 80], [320, 50], [380, 80], [340, 70], [375, 50]],
 scene.add_element(Cloud([[1000, 80], [1020, 50], [1080, 80], [1040, 70], [1075, 50]], 100))
 scene.add_element(Pitch())
 scene.add_element(Goal())
-scene.add_element(Ball())
 scene.add_element(Name())
 scene.add_element(DirtPatch([[570, 450], [610, 500], [670, 480], [650, 470]], dark_brown, 100))
 scene.add_element(DirtPatch([[620, 470], [650, 500], [670, 480], [650, 470]], brown, 30))
 
+
+while True:
+    scene.update()
+    frame = scene.draw()
+
+    cv2.imshow('Football', frame)
+    #cv2.imshow('Scene', frame)
+    
+    if cv2.waitKey(100) & 0xFF == 27:  # Press ESC to exit
+        break
 # Render the scene
-scene.render()
+#scene.render()
