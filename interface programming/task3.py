@@ -1,109 +1,129 @@
 import cv2
 import mediapipe as mp
-import time
-from collections import deque
 
-# Initialize MediaPipe
-mp_drawing = mp.solutions.drawing_utils
+# Initialize MediaPipe Modules
+mp_face_detection = mp.solutions.face_detection
 mp_hands = mp.solutions.hands
+mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
 
-# Hand landmark mapping
-FINGERS = {
-    "thumb": [1, 2, 3, 4],
-    "index": [5, 6, 7, 8],
-    "middle": [9, 10, 11, 12],
-    "ring": [13, 14, 15, 16],
-    "pinky": [17, 18, 19, 20],
-    "wrist": [0]
-}
+# Load MediaPipe Gesture Recognizer Task
+BaseOptions = mp.tasks.BaseOptions
+GestureRecognizer = mp.tasks.vision.GestureRecognizer
+GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
+VisionRunningMode = mp.tasks.vision.RunningMode
 
-# Start video capture
-cap = cv2.VideoCapture(0)
 
-# Initialize Hands detection
-with mp_hands.Hands(
-    model_complexity=0,
-    min_detection_confidence=0.5,
-    min_tracking_confidence=0.5) as hands:
+class GestureRecognition:
+    def __init__(self, model_path):
+        self.options = GestureRecognizerOptions(
+            base_options=BaseOptions(model_asset_path=model_path),
+            running_mode=VisionRunningMode.IMAGE
+        )
+        self.recognizer = GestureRecognizer.create_from_options(self.options)
 
-    prev_x = None  # Store previous wrist x-position
-    movement_queue = deque(maxlen=5)  # Stores last few movements
-    wave_threshold = 3  # Minimum alternating movements for a wave
-    min_movement_distance = 15  # Minimum pixels moved to count as a wave
-    last_wave_time = 0  # Timestamp of last detected wave
-    wave_cooldown = 1  # Cooldown duration
+    def recognize_gesture(self, image):
+        try:
+            # Convert the image to MediaPipe Image format
+            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
+            result = self.recognizer.recognize(mp_image)
+
+            # Display gesture recognition result
+            gestures = []
+            if result.gestures:
+                for gesture in result.gestures:
+                    name = gesture[0].category_name
+                    score = gesture[0].score
+                    gestures.append((name, score))
+            return gestures
+        except Exception as e:
+            print(f"Error in Gesture Recognition: {e}")
+            return []
+
+
+class FaceRecognition:
+    def __init__(self):
+        self.face_detection = mp_face_detection.FaceDetection(
+            model_selection=0, min_detection_confidence=0.5
+        )
+
+    def detect_face(self, image):
+        return self.face_detection.process(image)
+
+
+class HandRecognition:
+    def __init__(self):
+        self.hands = mp_hands.Hands(
+            model_complexity=0,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5
+        )
+
+    def detect_hands(self, image):
+        return self.hands.process(image)
+
+
+# Main program loop
+def main():
+    # Initialize the camera and capture video
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    # Initialize all recognition modules
+    gesture_recognition = GestureRecognition(model_path="gesture_recognizer.task")
+    face_recognition = FaceRecognition()
+    hand_recognition = HandRecognition()
 
     while cap.isOpened():
         success, image = cap.read()
         if not success:
+            print("Ignoring empty camera frame.")
             continue
 
-        # Flip image for selfie view
+        # Flip the image horizontally for a selfie-view display
         image = cv2.flip(image, 1)
-        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = hands.process(image_rgb)
-        image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
-        gesture = "No Hand Detected"
 
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                h, w, _ = image.shape
-                wrist_x = int(hand_landmarks.landmark[FINGERS["wrist"][0]].x * w)
+        # Convert BGR to RGB (required for MediaPipe)
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-                # Detect extended fingers using distance
-                extended_fingers = {}
-                for finger, points in FINGERS.items():
-                    if finger == "wrist":
-                        continue
-                    tip_y = hand_landmarks.landmark[points[-1]].y * h
-                    base_y = hand_landmarks.landmark[points[0]].y * h
-                    mid_y = hand_landmarks.landmark[points[1]].y * h
-                    extended_fingers[finger] = (tip_y < base_y) and (tip_y < mid_y)
+        # Process face and hand detections
+        face_results = face_recognition.detect_face(rgb_image)
+        hand_results = hand_recognition.detect_hands(rgb_image)
 
-                # Determine hand gesture
-                if extended_fingers["index"] and not any(
-                        extended_fingers[f] for f in ["thumb", "middle", "ring", "pinky"]):
-                    gesture = "Point"
-                elif extended_fingers["index"] and extended_fingers["middle"] and not any(
-                        extended_fingers[f] for f in ["thumb", "ring", "pinky"]):
-                    gesture = "Peace"
-                elif all(extended_fingers.values()):
-                    gesture = "Open Palm"
-                elif not any(extended_fingers.values()):
-                    gesture = "Closed Fist"
-                elif extended_fingers["index"] and extended_fingers["pinky"] and not any(
-                        extended_fingers[f] for f in ["thumb", "middle", "ring"]):
-                    gesture = "Rock On"
-                elif extended_fingers["thumb"] and not any(
-                        extended_fingers[f] for f in ["index", "middle", "ring", "pinky"]):
-                    gesture = "Thumbs Up"
+        # Gesture recognition
+        gestures = gesture_recognition.recognize_gesture(rgb_image)
 
-                # Wave detection
-                if prev_x is not None:
-                    movement = wrist_x - prev_x
-                    if abs(movement) > min_movement_distance:
-                        movement_queue.append(movement)
+        # Draw face detection results
+        if face_results.detections:
+            for detection in face_results.detections:
+                mp_drawing.draw_detection(image, detection)
 
-                prev_x = wrist_x
+        # Draw hand landmarks
+        if hand_results.multi_hand_landmarks:
+            for hand_landmarks in hand_results.multi_hand_landmarks:
+                mp_drawing.draw_landmarks(
+                    image,
+                    hand_landmarks,
+                    mp_hands.HAND_CONNECTIONS,
+                    mp_drawing_styles.get_default_hand_landmarks_style(),
+                    mp_drawing_styles.get_default_hand_connections_style())
 
-                if len(movement_queue) >= wave_threshold and time.time() - last_wave_time > wave_cooldown:
-                    gesture = "Waving"
-                    last_wave_time = time.time()
-                    movement_queue.clear()
+        # Display gesture recognition results
+        for gesture, score in gestures:
+            cv2.putText(image, f"{gesture} ({score:.2f})", (50, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
-                # Draw landmarks
-                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+        # Show the frame with all detections
+        cv2.imshow("Face, Hand, and Gesture Recognition", image)
 
-        # Display detected gesture
-        cv2.putText(image, gesture, (50, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        cv2.imshow('Hand Gesture Recognition', image)
-
-        # Exit on ESC key
+        # Exit loop when 'ESC' key is pressed
         if cv2.waitKey(1) & 0xFF == 27:
             break
 
-# Release resources
-cap.release()
-cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
