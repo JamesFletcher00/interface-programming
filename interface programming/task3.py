@@ -42,7 +42,7 @@ with mp_hands.Hands(
         # Convert back to BGR for OpenCV
         image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
 
-        gesture = "Unknown"  # Default state
+        gesture = "No Hand Detected"  # Default state
 
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
@@ -52,34 +52,46 @@ with mp_hands.Hands(
                 wrist_x = int(hand_landmarks.landmark[0].x * w)
 
                 # Get key landmark positions for open palm vs. closed fist
-                index_tip, middle_tip, ring_tip, pinky_tip = 8, 12, 16, 20
-                index_base, middle_base, ring_base, pinky_base = 6, 10, 14, 18
+                thumb_tip, index_tip, middle_tip, ring_tip, pinky_tip = 4, 8, 12, 16, 20
+                thumb_base, index_base, middle_base, ring_base, pinky_base = 1, 6, 10, 14, 18
 
                 # Get y-positions of fingertips and their bases
                 index_y = hand_landmarks.landmark[index_tip].y * h
                 middle_y = hand_landmarks.landmark[middle_tip].y * h
                 ring_y = hand_landmarks.landmark[ring_tip].y * h
                 pinky_y = hand_landmarks.landmark[pinky_tip].y * h
+                thumb_y = hand_landmarks.landmark[thumb_tip].y * h
 
                 index_base_y = hand_landmarks.landmark[index_base].y * h
                 middle_base_y = hand_landmarks.landmark[middle_base].y * h
                 ring_base_y = hand_landmarks.landmark[ring_base].y * h
                 pinky_base_y = hand_landmarks.landmark[pinky_base].y * h
+                thumb_base_y = hand_landmarks.landmark[thumb_base].y * h
 
                 # Determine if fingers are extended
                 index_extended = index_y < index_base_y
                 middle_extended = middle_y < middle_base_y
                 ring_extended = ring_y < ring_base_y
                 pinky_extended = pinky_y < pinky_base_y
+                thumb_extended = thumb_y < thumb_base_y
+                thumb_down = thumb_y > thumb_base_y
 
                 # Determine hand gesture
-                if index_extended and middle_extended and not ring_extended and not pinky_extended:
-                    gesture = "Peace ✌️"
-                elif index_extended and middle_extended and ring_extended and pinky_extended:
+                if index_extended and not thumb_extended and not middle_extended and not ring_extended and not pinky_extended:
+                    gesture = "Point"
+                elif index_extended and middle_extended and not thumb_extended and not ring_extended and not pinky_extended:
+                    gesture = "Peace"
+                elif thumb_extended and index_extended and middle_extended and ring_extended and pinky_extended:
                     gesture = "Open Palm"
-                elif not index_extended and not middle_extended and not ring_extended and not pinky_extended:
+                elif not thumb_extended and not index_extended and not middle_extended and not ring_extended and not pinky_extended:
                     gesture = "Closed Fist"
-
+                elif index_extended and pinky_extended and not middle_extended and not ring_extended:
+                    gesture = "Rock On Dude!"
+                elif thumb_extended and not index_extended and not middle_extended and not ring_extended and not pinky_extended:
+                    gesture = "Thumbs Up"
+                elif thumb_down and not index_extended and not middle_extended and not ring_extended and not pinky_extended:
+                    gesture = "Thumbs Down"
+                    
                 # Wave detection: track wrist movement
                 if prev_x is not None:
                     movement = wrist_x - prev_x  # Change in X position
