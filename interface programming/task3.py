@@ -74,7 +74,6 @@ with mp_hands.Hands(
                 ring_extended = ring_y < ring_base_y
                 pinky_extended = pinky_y < pinky_base_y
                 thumb_extended = thumb_y < thumb_base_y
-                thumb_down = thumb_y > thumb_base_y
 
                 # Determine hand gesture
                 if index_extended and not thumb_extended and not middle_extended and not ring_extended and not pinky_extended:
@@ -89,8 +88,7 @@ with mp_hands.Hands(
                     gesture = "Rock On Dude!"
                 elif thumb_extended and not index_extended and not middle_extended and not ring_extended and not pinky_extended:
                     gesture = "Thumbs Up"
-                elif thumb_down and not index_extended and not middle_extended and not ring_extended and not pinky_extended:
-                    gesture = "Thumbs Down"
+
                     
                 # Wave detection: track wrist movement
                 if prev_x is not None:
