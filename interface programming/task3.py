@@ -3,52 +3,11 @@ import mediapipe as mp
 import numpy as np
 
 # Initialize MediaPipe Modules
-mp_face_detection = mp.solutions.face_detection
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
 
-# Load MediaPipe Gesture Recognizer Task
-BaseOptions = mp.tasks.BaseOptions
-GestureRecognizer = mp.tasks.vision.GestureRecognizer
-GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
-
-
-class GestureRecognition:
-    def __init__(self, model_path):
-        self.options = GestureRecognizerOptions(
-            base_options=BaseOptions(model_asset_path=model_path),
-            running_mode=VisionRunningMode.IMAGE
-        )
-        self.recognizer = GestureRecognizer.create_from_options(self.options)
-
-    def recognize_gesture(self, image):
-        try:
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image)
-            result = self.recognizer.recognize(mp_image)
-            gestures = []
-            if result.gestures:
-                for gesture in result.gestures:
-                    name = gesture[0].category_name
-                    score = gesture[0].score
-                    gestures.append((name, score))
-            return gestures
-        except Exception as e:
-            print(f"Error in Gesture Recognition: {e}")
-            return []
-
-
-class FaceRecognition:
-    def __init__(self):
-        self.face_detection = mp_face_detection.FaceDetection(
-            model_selection=0, min_detection_confidence=0.5
-        )
-
-    def detect_face(self, image):
-        return self.face_detection.process(image)
-
-
+# Hand recognition class
 class HandRecognition:
     def __init__(self):
         self.hands = mp_hands.Hands(
@@ -61,16 +20,23 @@ class HandRecognition:
         return self.hands.process(image)
 
 
-# Check if the user is pointing up
+# Function to check if finger is pointing up
 def is_pointing_up(hand_landmarks):
     if hand_landmarks:
         index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
         thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
         
-        # Index finger tip should be higher than thumb tip
-        if index_finger_tip.y < thumb_tip.y:
-            return True
+        # Index finger tip should be higher than the thumb
+        return index_finger_tip.y < thumb_tip.y
     return False
+
+
+# Function to check if finger is in a color box
+def check_color_selection(x, y, color_boxes):
+    for i, (x1, y1, x2, y2, color) in enumerate(color_boxes):
+        if x1 < x < x2 and y1 < y < y2:
+            return color  # Return the new selected color
+    return None
 
 
 def main():
@@ -78,78 +44,65 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
-    gesture_recognition = GestureRecognition(model_path="gesture_recognizer.task")
-    face_recognition = FaceRecognition()
     hand_recognition = HandRecognition()
+
+    # Color selection setup
+    selected_color = (255, 0, 0)  # Default color: Blue
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255)]  # Blue, Green, Red, Yellow, Purple
+    color_boxes = [(i * 100, 0, (i + 1) * 100, 50, colors[i]) for i in range(len(colors))]
 
     # Drawing setup
     drawing = False
-    color_index = 0
-    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255)]
     prev_x, prev_y = None, None
-
-    # Create a blank canvas for drawing
     canvas = np.zeros((480, 640, 3), dtype=np.uint8)
 
     while cap.isOpened():
         success, image = cap.read()
         if not success:
-            print("Ignoring empty camera frame.")
             continue
 
-        image = cv2.flip(image, 1)
+        image = cv2.flip(image, 1)  # Flip for a mirror effect
         rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
-        face_results = face_recognition.detect_face(rgb_image)
         hand_results = hand_recognition.detect_hands(rgb_image)
 
-        gestures = gesture_recognition.recognize_gesture(rgb_image)
+        # Draw color selection boxes
+        for x1, y1, x2, y2, color in color_boxes:
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, -1)
 
-        # Draw face detection results
-        if face_results.detections:
-            for detection in face_results.detections:
-                mp_drawing.draw_detection(image, detection)
-
-        # Draw hand landmarks and check for "pointing up" gesture
-        drawing = False  # Reset drawing state on each frame
         if hand_results.multi_hand_landmarks:
             for hand_landmarks in hand_results.multi_hand_landmarks:
                 mp_drawing.draw_landmarks(
-                    image,
-                    hand_landmarks,
-                    mp_hands.HAND_CONNECTIONS,
+                    image, hand_landmarks, mp_hands.HAND_CONNECTIONS,
                     mp_drawing_styles.get_default_hand_landmarks_style(),
                     mp_drawing_styles.get_default_hand_connections_style()
                 )
 
-                # Check if "pointing up" gesture is detected
-                if is_pointing_up(hand_landmarks):
-                    drawing = True  # Only draw if pointing up
-
-                # Get fingertip coordinates for drawing
+                # Get fingertip coordinates
                 index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
                 x, y = int(index_finger_tip.x * 640), int(index_finger_tip.y * 480)
 
-                if drawing:
-                    # Draw only if "pointing up" gesture is active
-                    if prev_x is not None and prev_y is not None:
-                        cv2.line(canvas, (prev_x, prev_y), (x, y), colors[color_index], 5)
-                    prev_x, prev_y = x, y
+                # Check if finger touches a color box
+                new_color = check_color_selection(x, y, color_boxes)
+                if new_color:
+                    selected_color = new_color  # Change drawing color
+
+                # Check if the finger is pointing up to start drawing
+                if is_pointing_up(hand_landmarks):
+                    drawing = True
                 else:
-                    prev_x, prev_y = None, None  # Reset position when not drawing
+                    drawing = False
+                    prev_x, prev_y = None, None  # Reset drawing position
+
+                # Draw only if pointing up
+                if drawing:
+                    if prev_x is not None and prev_y is not None:
+                        cv2.line(canvas, (prev_x, prev_y), (x, y), selected_color, 5)
+                    prev_x, prev_y = x, y
 
         # Overlay the drawing on the image
         image = cv2.addWeighted(image, 1, canvas, 0.5, 0)
 
-        # Display gesture recognition results
-        for gesture, score in gestures:
-            cv2.putText(image, f"{gesture} ({score:.2f})", (50, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-        # Draw color selection boxes
-        for i, color in enumerate(colors):
-            cv2.rectangle(image, (i * 100, 0), ((i + 1) * 100, 50), color, -1)
-
+        # Show the output
         cv2.imshow("Hand Gesture Drawing", image)
 
         if cv2.waitKey(1) & 0xFF == 27:
