@@ -42,7 +42,6 @@ class GestureRecognition:
                     score = gesture[0].score
                     gestures.append((name, score))
 
-            print("Detected Gestures:", gestures)  # ✅ Debugging: See detected gestures
             return gestures
         except Exception as e:
             print(f"Error in Gesture Recognition: {e}")
@@ -149,7 +148,6 @@ def main():
         if clear_screen:
             canvas[:] = 0
             prev_x, prev_y = None, None
-            print("Canvas cleared!")
 
         # ✅ Draw color selection boxes
         for x1, y1, x2, y2, color in color_boxes:
@@ -158,11 +156,10 @@ def main():
         # ✅ Mouth Open Detection & Sound Playback
         if face_mesh_results.multi_face_landmarks:
             for face_landmarks in face_mesh_results.multi_face_landmarks:
-                mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_LIPS)
+                #mp_drawing.draw_landmarks(image, face_landmarks, mp_face_mesh.FACEMESH_LIPS)
 
                 if is_mouth_open(face_landmarks) and not mouth_open:
                     mouth_open = True
-                    print("Mouth Open! 🎤 Playing sound...")
                     pygame.mixer.music.play()
 
                 elif not is_mouth_open(face_landmarks):
@@ -191,7 +188,7 @@ def main():
                 prev_x, prev_y = x, y
 
         output = cv2.addWeighted(image, 1, canvas, 0.5, 0)
-        cv2.imshow("Hand Gesture & Mouth Detection", output)
+        cv2.imshow("Interface Programming", output)
 
         if cv2.waitKey(1) & 0xFF == 27:
             break
