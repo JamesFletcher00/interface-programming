@@ -4,22 +4,23 @@ import numpy as np
 
 # Initialize MediaPipe Modules
 mp_hands = mp.solutions.hands
-mp_face_detection = mp.solutions.face_detection  # ✅ Face detection remains
+mp_face_detection = mp.solutions.face_detection
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
+mp_tasks = mp.tasks
 
 # Load MediaPipe Gesture Recognizer Task
-BaseOptions = mp.tasks.BaseOptions
-GestureRecognizer = mp.tasks.vision.GestureRecognizer
-GestureRecognizerOptions = mp.tasks.vision.GestureRecognizerOptions
-VisionRunningMode = mp.tasks.vision.RunningMode
+BaseOptions = mp_tasks.BaseOptions
+GestureRecognizer = mp_tasks.vision.GestureRecognizer
+GestureRecognizerOptions = mp_tasks.vision.GestureRecognizerOptions
+VisionRunningMode = mp_tasks.vision.RunningMode
 
 
 class GestureRecognition:
     def __init__(self, model_path):
         self.options = GestureRecognizerOptions(
             base_options=BaseOptions(model_asset_path=model_path),
-            running_mode=VisionRunningMode.IMAGE
+            running_mode=VisionRunningMode.IMAGE  # ✅ Fix: IMAGE mode avoids timestamp issues
         )
         self.recognizer = GestureRecognizer.create_from_options(self.options)
 
@@ -33,6 +34,7 @@ class GestureRecognition:
                     name = gesture[0].category_name
                     score = gesture[0].score
                     gestures.append((name, score))
+
             return gestures
         except Exception as e:
             print(f"Error in Gesture Recognition: {e}")
@@ -61,7 +63,7 @@ class HandRecognition:
         return self.hands.process(image)
 
 
-# Function to check if the finger is pointing up
+# Function to check if the index finger is pointing up
 def is_pointing_up(hand_landmarks):
     if hand_landmarks:
         index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
@@ -114,21 +116,22 @@ def main():
         # Detect faces
         face_results = face_recognition.detect_face(rgb_image)
 
+        # ✅ Check if Open Palm gesture is detected (to clear screen)
+        clear_screen = False
+        for gesture, score in gestures:
+            if gesture == "Open_Palm" and score >= 0.5:  # ✅ Fix comparison
+                clear_screen = True
+                break  # Stop checking once Open Palm is detected
+
+        # ✅ Reset the canvas if Open Palm is detected
+        if clear_screen:
+            canvas[:] = 0  # Reset drawing
+            prev_x, prev_y = None, None  # Prevents leftover lines
+            print("Canvas cleared!")  # Debugging message
+
         # Draw color selection boxes
         for x1, y1, x2, y2, color in color_boxes:
             cv2.rectangle(image, (x1, y1), (x2, y2), color, -1)
-
-        # Check if Open Palm gesture is detected (to clear screen)
-        clear_screen = False
-        for gesture, score in gestures:
-            if "Open Palm" in gesture and score >= 0.5:  # ✅ Confidence threshold set to 50%
-                clear_screen = True
-
-        # Reset the canvas if Open Palm is detected
-        if clear_screen:
-            canvas.fill(0)  # ✅ Completely resets the drawing canvas
-            prev_x, prev_y = None, None  # ✅ Reset previous drawing position
-            print("Canvas cleared!")  # ✅ Debugging message
 
         # Display recognized gestures on screen
         for i, (gesture, score) in enumerate(gestures):
@@ -158,7 +161,7 @@ def main():
                     selected_color = new_color  # Change drawing color
 
                 # Check if the finger is pointing up to start drawing
-                if is_pointing_up(hand_landmarks) and score > 0.5:
+                if is_pointing_up(hand_landmarks):
                     drawing = True
                 else:
                     drawing = False
@@ -171,10 +174,10 @@ def main():
                     prev_x, prev_y = x, y
 
         # Overlay the drawing on the image
-        image = cv2.addWeighted(image, 1, canvas, 0.5, 0)
+        output = cv2.addWeighted(image, 1, canvas, 0.5, 0)
 
         # Show the output
-        cv2.imshow("Hand Gesture Drawing & Face Recognition", image)
+        cv2.imshow("Hand Gesture Drawing & Face Recognition", output)
 
         if cv2.waitKey(1) & 0xFF == 27:
             break
