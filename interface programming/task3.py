@@ -237,7 +237,7 @@ def main():
                         circle_next = False  # Disable this shape until the next cycle
 
                     elif tri_next:
-                        tri_pts = np.array([[Tx, Ty], [Tx - 30, Ty + 50], [Tx + 30, Ty + 50]], np.int32)
+                        tri_pts = np.array([[Tx, Ty], [Tx - 130, Ty + 150], [Tx + 130, Ty + 150]], np.int32)
                         tri_pts = tri_pts.reshape((-1, 1, 2))
                         cv2.fillPoly(canvas, [tri_pts], selected_color)
                         shape_on_screen = True
@@ -245,7 +245,7 @@ def main():
                         tri_next = False  # Disable this shape until the next cycle
 
                     elif rect_next:
-                        cv2.rectangle(canvas, (Tx, Ty), (Tx + 100, Ty + 100), selected_color, -1)
+                        cv2.rectangle(canvas, (Tx, Ty), (Tx + 140, Ty + 140), selected_color, -1)
                         shape_on_screen = True
                         circle_next = True  # Reset cycle
                         rect_next = False  # Disable this shape until the next cycle
@@ -254,6 +254,15 @@ def main():
 
 
         output = cv2.addWeighted(image, 1, canvas, 0.5, 0)
+
+        gesture_text = "No Gesture Detected"
+        if gestures:
+            gesture_text = f"Gesture: {gestures[0][0]}"  # Display first recognized gesture
+
+        # ✅ Overlay the gesture name on the screen
+        cv2.putText(output, gesture_text, (50, 450), cv2.FONT_HERSHEY_SIMPLEX, 
+                    1, (0, 255, 0), 2, cv2.LINE_AA)
+
         cv2.imshow("Interface Programming", output)
 
         if cv2.waitKey(1) & 0xFF == 27:
