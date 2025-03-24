@@ -2,6 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import pygame  # ✅ For playing audio
+import time
 
 # Initialize MediaPipe Modules
 mp_hands = mp.solutions.hands
@@ -94,6 +95,27 @@ def is_pointing_up(hand_landmarks):
         return index_finger_tip.y < thumb_tip.y  # Finger tip must be above thumb tip
     return False
 
+def is_thumb_down(hand_landmarks):
+    if not hand_landmarks:
+        return False
+
+    thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
+    index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+    thumb_mcp = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_MCP]
+    wrist = hand_landmarks.landmark[mp_hands.HandLandmark.WRIST]
+
+    # ✅ Condition 1: Thumb tip must be below the index finger tip
+    thumb_below_index = thumb_tip.y > index_finger_tip.y
+
+    # ✅ Condition 2: Thumb tip must be below the thumb MCP (to ensure downward direction)
+    thumb_pointing_down = thumb_tip.y > thumb_mcp.y
+
+    # ✅ Condition 3: Thumb tip must be below the wrist
+    thumb_below_wrist = thumb_tip.y > wrist.y
+
+    return thumb_below_index and thumb_pointing_down and thumb_below_wrist
+
+
 
 # ✅ Function to check if finger is in a color box
 def check_color_selection(x, y, color_boxes):
@@ -121,6 +143,13 @@ def main():
     drawing = False
     prev_x, prev_y = None, None
     canvas = np.zeros((480, 640, 3), dtype=np.uint8)
+    draw_shape = False
+    shape_on_screen = False
+    circle_next = True
+    tri_next = False
+    rect_next = False
+    last_draw_time = 0  # Tracks the last shape draw time
+    draw_cooldown = 1  # Cooldown time in seconds (adjust as needed)
 
     mouth_open = False  # ✅ Prevents continuous sound spam
 
@@ -148,6 +177,7 @@ def main():
         if clear_screen:
             canvas[:] = 0
             prev_x, prev_y = None, None
+            shape_on_screen = False
 
         # ✅ Draw color selection boxes
         for x1, y1, x2, y2, color in color_boxes:
@@ -171,7 +201,12 @@ def main():
                 mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                 index_finger_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                thumb_tip = hand_landmarks.landmark[mp_hands.HandLandmark.THUMB_TIP]
                 x, y = int(index_finger_tip.x * 640), int(index_finger_tip.y * 480)
+                Tx, Ty = int(thumb_tip.x * 640), int(thumb_tip.y * 480)
+                
+                tri_pts = np.array([[Tx, Ty], [Tx - 30, Ty + 50], [Tx + 30, Ty + 50]], np.int32)
+                tri_pts = tri_pts.reshape((-1, 1, 2))  # Reshape to correct format      
 
                 new_color = check_color_selection(x, y, color_boxes)
                 if new_color:
@@ -186,6 +221,37 @@ def main():
                 if drawing and prev_x is not None and prev_y is not None:
                     cv2.line(canvas, (prev_x, prev_y), (x, y), selected_color, 5)
                 prev_x, prev_y = x, y
+
+                if is_thumb_down(hand_landmarks) and not shape_on_screen:
+                    draw_shape = True
+                
+                else:
+                    draw_shape = False
+
+                current_time = time.time()
+                if draw_shape and (current_time - last_draw_time > draw_cooldown):
+                    if circle_next:
+                        cv2.circle(canvas, (Tx, Ty), 100, selected_color, -1)
+                        shape_on_screen = True
+                        tri_next = True
+                        circle_next = False  # Disable this shape until the next cycle
+
+                    elif tri_next:
+                        tri_pts = np.array([[Tx, Ty], [Tx - 30, Ty + 50], [Tx + 30, Ty + 50]], np.int32)
+                        tri_pts = tri_pts.reshape((-1, 1, 2))
+                        cv2.fillPoly(canvas, [tri_pts], selected_color)
+                        shape_on_screen = True
+                        rect_next = True
+                        tri_next = False  # Disable this shape until the next cycle
+
+                    elif rect_next:
+                        cv2.rectangle(canvas, (Tx, Ty), (Tx + 100, Ty + 100), selected_color, -1)
+                        shape_on_screen = True
+                        circle_next = True  # Reset cycle
+                        rect_next = False  # Disable this shape until the next cycle
+
+                    last_draw_time = current_time  # ✅ Update last draw time to enforce cooldown
+
 
         output = cv2.addWeighted(image, 1, canvas, 0.5, 0)
         cv2.imshow("Interface Programming", output)
