@@ -9,11 +9,12 @@ dark_brown = (33, 67, 101)
 black = (0,0,0)
 
 
-
+#changes bg colour
 class Sky:
     def draw(self, bg):
         cv2.rectangle(bg, (0, 0), (1200, 300), sky_blue, -1)
 
+#initializes polygon shape for cloud
 class Cloud:
     def __init__(self, points, thickness=100):
         self.points = np.array(points, np.int32).reshape((-1, 1, 2))
@@ -22,6 +23,7 @@ class Cloud:
     def draw(self, bg):
         cv2.polylines(bg, [self.points], True, white, self.thickness)
 
+#draws pitch
 class Pitch:
     def draw(self, bg):
         cv2.rectangle(bg, (0, 600), (1200, 300), grass_green, -1)
@@ -30,6 +32,7 @@ class Pitch:
         cv2.line(bg, (0, 360), (1200, 360), white, 5)
         cv2.line(bg, (0, 598), (1200, 598), white, 5)
 
+#draws goal posts then each netting
 class Goal:
     def draw(self, bg):
         # Goalposts
@@ -174,31 +177,7 @@ class Goal:
         cv2.line(bg,(315,120), (325,338), white, 1)
         cv2.line(bg,(310,120), (315,346), white, 1)
 
-"""
-        start_Lx, end_Lx = 335, 300
-        start_Rx, end_Rx = 865, 905
-        y_pairs = [
-            (330, 360), (320, 350), (310, 340), (300, 330), (290, 320),
-            (280, 310), (270, 300), (260, 290), (250, 280), (240, 270),
-            (237, 260), (227, 250), (218, 240), (208, 230), (199, 220),
-            (189, 210), (180, 200), (170, 190), (161, 180), (151, 170),
-            (142, 160), (132, 150)
-        ]
-        for start_y, end_y in y_pairs:
-            cv2.line(bg, (start_Lx, start_y), (end_Lx, end_y), white, 1)
-            if start_y in [237, 227, 218, 208, 199, 189, 180, 170, 161, 151, 142, 132]:
-                start_Lx -= 1
-        for start_y, end_y in y_pairs:
-            cv2.line(bg, (start_Rx, start_y), (end_Rx, end_y), white, 1)
-            if start_y in [237, 227, 218, 208, 199, 189, 180, 170, 161, 151, 142, 132]:
-                start_Rx -= 1
-"""
 
-
-class Name:
-    def draw(self, bg):
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(bg,' - - - - - - James Fletcher - - - - - - ',(413,125), font, 0.5,black,1,cv2.LINE_AA)
 
 class Ball:
     def __init__(self, x=350,y=163):
@@ -208,15 +187,22 @@ class Ball:
     def update_position(self, frame_count):
         """Change position every 10 frames by cycling through the list"""
         if frame_count % 10 == 0:
-            self.index = (self.index + 1) % len(self.positions)  # Cycle through positions
+            self.index = (self.index + 1) % len(self.positions)  # cycle through positions
 
     def draw(self, bg):
-        x1, y1 = self.positions[self.index]     #Position data for white fill
-        x2, y2 = self.positions[self.index]  #Position data for black outline
+        x1, y1 = self.positions[self.index]     #position data for white fill
+        x2, y2 = self.positions[self.index]     #position data for black outline
 
-        cv2.ellipse(bg, (x1, y1), (22, 28), -30, 0, 360, white, -1)  # White fill
-        cv2.ellipse(bg, (x2, y2), (22, 28), -30, 0, 360, black, 1)   # Black outline
+        cv2.ellipse(bg, (x1, y1), (22, 28), -30, 0, 360, white, -1)  # white fill
+        cv2.ellipse(bg, (x2, y2), (22, 28), -30, 0, 360, black, 1)   # black outline
         
+
+#writes name on goalposts
+class Name:
+    def draw(self, bg):
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(bg,' - - - - - - James Fletcher - - - - - - ',(413,125), font, 0.5,black,1,cv2.LINE_AA)
+
 
 class DirtPatch:
     def __init__(self, points, color, thickness):
@@ -227,13 +213,14 @@ class DirtPatch:
     def draw(self, bg):
         cv2.polylines(bg, [self.points], True, self.color, self.thickness)
 
+#initializes scene essentials
 class Scene:
     def __init__(self, width=1200, height=600):
         self.bg = np.zeros((height, width, 3), np.uint8)
         self.elements = []
         self.width = width
         self.height = height
-        self.ball = Ball()  # One persistent Ball object
+        self.ball = Ball()  
         self.frame_count = 0
 
     def add_element(self, element):
@@ -241,21 +228,20 @@ class Scene:
 
     def update(self):
         self.frame_count += 1
-        self.ball.update_position(self.frame_count)  # Move ball if needed
+        self.ball.update_position(self.frame_count)  # move ball
     
     def draw(self):
-        frame = self.bg.copy()  # Start with a clean background
+        frame = self.bg.copy()  # start with a clean background
         
-        # Draw all scene elements
+        # draw all scene elements
         for element in self.elements:
             element.draw(frame)
         
-        self.ball.draw(frame)  # Draw ball on top
+        self.ball.draw(frame)  # draw ball on top
         
         return frame
 
 
-# Initialize scene
 scene = Scene()
 
 # Add elements to the scene
@@ -275,9 +261,6 @@ while True:
     frame = scene.draw()
 
     cv2.imshow('Football', frame)
-    #cv2.imshow('Scene', frame)
     
-    if cv2.waitKey(100) & 0xFF == 27:  # Press ESC to exit
+    if cv2.waitKey(100) & 0xFF == 27:  # press escape to close
         break
-# Render the scene
-#scene.render()
