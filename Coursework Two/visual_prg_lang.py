@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import mediapipe as mp
-from code_blocks import ActionBlock, VariableBlock, ValueBlock, ControlBlock
+from code_blocks import ActionBlock, VariableBlock, ValueBlock, ControlBlock, OperatorBlock, StringBlock
 from gestures import is_fist, get_hand_center
 
 # ----------------------------
@@ -36,40 +36,38 @@ class Button:
     def contains_point(self, px, py):
         return self.x <= px <= self.x + self.width and self.y <= py <= self.y + self.height
 
+
 # ----------------------------
-# MediaPipe Setup
+# Setup
 # ----------------------------
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands()
 mp_draw = mp.solutions.drawing_utils
 
-# Start webcam
 cap = cv2.VideoCapture(0)
 cv2.namedWindow("Hand Tracking", cv2.WINDOW_NORMAL)
 
-# Read first frame
 success, img = cap.read()
 if not success:
     exit("Failed to read from webcam.")
 
 img_height, img_width, _ = img.shape
-cv2.resizeWindow("Hand Tracking", img_width, img_height)
+cv2.resizeWindow("Hand Tracking", 1280, 960)
+
 PLAY_AREA_TOP = int(img_height * 0.3)
 
 # ----------------------------
-# Menu State Setup
+# UI State
 # ----------------------------
 
 menu_state = "main"
-spawned_blocks = []
-selected_block = None
+palette_blocks = []
+live_blocks = []
+dragged_block = None
 
-# Back Button
-back_button = Button(10, 10, 80, 40, "Back", (180, 50, 50))
-
-# Main menu buttons
-button_labels = ["Actions", "Variables", "Values", "Strings", "Control"]
+# Buttons
+button_labels = ["Functions", "Variables", "Values", "Strings", "Operators"]
 buttons = []
 button_width = img_width // len(button_labels)
 button_height = 50
@@ -79,37 +77,48 @@ for i, label in enumerate(button_labels):
     width = button_width if i < len(button_labels) - 1 else img_width - x
     buttons.append(Button(x, 0, width, button_height, label))
 
+back_button = Button(10, img_height - 60, 100, 45, "Back", (180, 50, 50))
+
 # ----------------------------
-# Block Factory
+# Spawn Blocks by Category
 # ----------------------------
 
 def spawn_blocks_for_category(category):
     blocks = []
-    x, y = 50, 100
-    spacing = 10
+    spacing = 5
+    x = 20
+    y = PLAY_AREA_TOP - 70  # just above the play area
 
-    if category == "Actions":
-        for action in ["print", "add", "multiply", "subtract", "divide"]:
-            blocks.append(ActionBlock(x, y, action=action, value="x,y"))
-            y += 70 + spacing
+    if category == "Functions":
+        for action in ["print"]:
+            block = ActionBlock(x, y, action=action, value="x,y")
+            blocks.append(block)
+            x += block.width + spacing
 
     elif category == "Variables":
         for var in ["x", "y", "name"]:
-            blocks.append(VariableBlock(x, y, name=var))
-            y += 60 + spacing
+            block = VariableBlock(x, y, name=var)
+            blocks.append(block)
+            x += block.width + spacing
 
     elif category == "Values":
         for val in range(10):
-            blocks.append(ValueBlock(x, y, value=str(val)))
-            y += 50 + spacing
+            block = ValueBlock(x, y, value=str(val))
+            blocks.append(block)
+            x += block.width + spacing
 
     elif category == "Strings":
         for text in ["Hello", "World", "James"]:
-            blocks.append(ValueBlock(x, y, value=f'"{text}"'))
-            y += 50 + spacing
+            block = ValueBlock(x, y, value=f'"{text}"')
+            blocks.append(block)
+            x += block.width + spacing
 
-    elif category == "Control":
-        blocks.append(ControlBlock(x, y, label="Repeat"))
+    elif category == "Operators":
+        for op in ["+", "-", "x", "/", "="]:
+            block = OperatorBlock(x, y, operator=op)
+            blocks.append(block)
+            x += block.width + spacing
+
 
     return blocks
 
@@ -126,6 +135,7 @@ while True:
     results = hands.process(img_rgb)
     flipped = cv2.flip(img, 1)
 
+    img_height, img_width, _ = flipped.shape
     hand_center = None
     index_finger = None
     hand_closed = False
@@ -151,8 +161,12 @@ while True:
             break
 
     # ----------------------------
-    # State: Main Menu
+    # Draw UI
     # ----------------------------
+
+    # Draw play area
+    cv2.rectangle(flipped, (0, PLAY_AREA_TOP), (img_width - 1, img_height - 1), (0, 255, 0), 2)
+
     if menu_state == "main":
         for btn in buttons:
             btn.hovered = index_finger and btn.contains_point(*index_finger)
@@ -162,45 +176,82 @@ while True:
             for btn in buttons:
                 if btn.contains_point(*index_finger):
                     menu_state = btn.label
-                    spawned_blocks = spawn_blocks_for_category(btn.label)
+                    palette_blocks = spawn_blocks_for_category(menu_state)
                     break
 
-    # ----------------------------
-    # State: In Category
-    # ----------------------------
     else:
         back_button.hovered = index_finger and back_button.contains_point(*index_finger)
         back_button.draw(flipped)
 
-        if hand_open and index_finger and back_button.contains_point(*index_finger):
-            # Keep only blocks below play area
-            spawned_blocks = [b for b in spawned_blocks if b.y > PLAY_AREA_TOP]
-            menu_state = "main"
+    if hand_open and index_finger and back_button.contains_point(*index_finger):
+        palette_blocks = []
+        menu_state = "main"
+        dragged_block = None
 
-        for block in spawned_blocks:
-            block.draw(flipped)
+    # Always draw live blocks (play area) and any dragged block
+    for b in live_blocks:
+        b.draw(flipped)
+    if dragged_block:
+        dragged_block.draw(flipped)
+
+    # Only draw palette blocks in category view
+    if menu_state != "main":
+        for b in palette_blocks:
+            b.draw(flipped)
+
+
 
     # ----------------------------
-    # Play Area & Block Movement
+    # Block Interaction
     # ----------------------------
 
-    cv2.rectangle(flipped, (0, PLAY_AREA_TOP), (img_width - 1, img_height - 1), (0, 255, 0), 2)
+    def clone_block(block):
+        if isinstance(block, ActionBlock):
+            return ActionBlock(block.x, block.y, action=block.action, value=block.value)
+        elif isinstance(block, VariableBlock):
+            return VariableBlock(block.x, block.y, name=block.name)
+        elif isinstance(block, ValueBlock):
+            return ValueBlock(block.x, block.y, value=block.value)
+        elif isinstance(block, StringBlock):
+            return StringBlock(block.x, block.y, value=block.value)
+        elif isinstance(block, ControlBlock):
+            return ControlBlock(block.x, block.y, label=block.label)
+        elif isinstance(block, OperatorBlock):
+            return OperatorBlock(block.x, block.y, operator=block.operator)
+        return None
+
 
     if index_finger:
         if hand_closed:
-            if selected_block is None:
-                for block in spawned_blocks:
-                    if block.contains_point(*index_finger):
-                        selected_block = block
+            if dragged_block is None:
+                # Try to grab from palette
+                for b in palette_blocks:
+                    if b.contains_point(*index_finger):
+                        dragged_block = clone_block(b)
                         break
-            elif selected_block:
-                selected_block.x = index_finger[0] - selected_block.width // 2
-                selected_block.y = index_finger[1] - selected_block.height // 2
+
+                # If not found, try to grab from live blocks
+                if dragged_block is None:
+                    for b in live_blocks:
+                        if b.contains_point(*index_finger):
+                            dragged_block = b
+                            live_blocks.remove(b)
+                            break
+
+            elif dragged_block:
+                dragged_block.x = index_finger[0] - dragged_block.width // 2
+                dragged_block.y = index_finger[1] - dragged_block.height // 2
+
         else:
-            selected_block = None
+            if dragged_block:
+                if dragged_block.y > PLAY_AREA_TOP:
+                    live_blocks.append(dragged_block)
+                # Otherwise discard (only for palette clones)
+                dragged_block = None
+
 
     # ----------------------------
-    # Show Frame
+    # Display Frame
     # ----------------------------
 
     cv2.imshow("Hand Tracking", flipped)
