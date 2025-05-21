@@ -25,11 +25,11 @@ class ActionBlock(Block):
     def __init__(self, x, y, action="print", value=""):
         self.action = action
         self.value = value
+        self.children = []  # ✅ new: stackable child blocks
         label = action
         super().__init__(x, y, 160, 60, label, (255, 153, 51))  # Orange
 
     def draw(self, canvas):
-        # Draw U-shape block
         x, y, w, h = self.x, self.y, self.width, self.height
         mid_cut = 30
 
@@ -46,32 +46,73 @@ class ActionBlock(Block):
         ], np.int32)
         cv2.fillPoly(canvas, [pts.reshape((-1, 1, 2))], self.color)
 
+        # Draw label (e.g. print)
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(canvas, self.label, (x + 10, y + 25),
                     font, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+
+        # Draw all children stacked inside
+        for i, child in enumerate(self.children):
+            child.draw(canvas)
+
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        for child in self.children:
+            child.move(dx, dy)
+
+    def get_snap_zone(self):
+        # Return the snapping rectangle inside the C-hole
+        x = self.x + 30
+        y = self.y + 30 + len(self.children) * 50
+        width = self.width - 60
+        height = 40
+        return (x, y, width, height)
+    
+    def generate_code(self):
+        if self.action == "repeat":
+            # Expect first child to be a value (how many times)
+            if not self.children:
+                return "# repeat with no body"
+
+            count_expr = "1"
+            body_blocks = self.children
+
+            # If first child is a ValueBlock or OperatorBlock, treat as count
+            if isinstance(body_blocks[0], (ValueBlock, OperatorBlock)):
+                count_expr = body_blocks[0].generate_code()
+                body_blocks = body_blocks[1:]
+
+            body_code = "\n    ".join(
+                b.generate_code() for b in body_blocks if hasattr(b, "generate_code")
+            )
+            return f"for _ in range({count_expr}):\n    {body_code}"
+
+        # Default behavior (e.g. print)
+        args = [child.generate_code() for child in self.children]
+        return f"{self.action}({', '.join(args)})"
+
+
 
 
 class VariableBlock(Block):
     def __init__(self, x, y, name="x"):
         self.name = name
-        label = f"{name} ="
-        super().__init__(x, y, 140, 50, label, (0, 200, 0))  # Green
+        label = name
+        super().__init__(x, y, 100, 45, label, (0, 200, 0))  # Green
 
     def draw(self, canvas):
         x, y, w, h = self.x, self.y, self.width, self.height
         cv2.rectangle(canvas, (x, y), (x + w, y + h), self.color, -1)
 
-        # Draw label
         font = cv2.FONT_HERSHEY_SIMPLEX
         cv2.putText(canvas, self.label, (x + 10, y + h // 2 + 5),
                     font, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+        
+    def generate_code(self):
+        return self.name
 
-        # Draw white socket on the right
-        socket_w = 30
-        socket_h = 30
-        sx = x + w - socket_w - 10
-        sy = y + (h - socket_h) // 2
-        cv2.rectangle(canvas, (sx, sy), (sx + socket_w, sy + socket_h), (255, 255, 255), -1)
+
 
 
 class ValueBlock(Block):
@@ -101,12 +142,18 @@ class ValueBlock(Block):
 
         cv2.putText(canvas, self.label, (text_x, text_y),
                     font, font_scale, (0, 0, 0), thickness, cv2.LINE_AA)
+        
+    def generate_code(self):
+        return str(self.value)
 
 
 class StringBlock(ValueBlock):
     def __init__(self, x, y, value='"Hello"'):
         super().__init__(x, y, value)
         self.color = (0, 180, 255)  # Light blue
+
+    def generate_code(self):
+        return str(self.value)
 
 
 class ControlBlock(Block):
@@ -142,6 +189,8 @@ class ControlBlock(Block):
 class OperatorBlock(Block):
     def __init__(self, x, y, operator="+"):
         self.operator = operator
+        self.left_child = None
+        self.right_child = None
         label = operator
         super().__init__(x, y, 140, 50, label, (102, 102, 255))  # Blue
 
@@ -149,24 +198,53 @@ class OperatorBlock(Block):
         x, y, w, h = self.x, self.y, self.width, self.height
         cv2.rectangle(canvas, (x, y), (x + w, y + h), self.color, -1)
 
-        # Draw sockets
+        # Socket positions
         socket_size = 25
         padding = 10
+        left_socket = (x + padding, y + (h - socket_size) // 2, socket_size, socket_size)
+        right_socket = (x + w - padding - socket_size, y + (h - socket_size) // 2, socket_size, socket_size)
 
-        # Left socket
-        cv2.rectangle(canvas, (x + padding, y + (h - socket_size) // 2),
-                      (x + padding + socket_size, y + (h + socket_size) // 2),
-                      (255, 255, 255), -1)
+        # Draw sockets or child blocks
+        if self.left_child:
+            self.left_child.draw(canvas)
+        else:
+            cv2.rectangle(canvas, (left_socket[0], left_socket[1]),
+                          (left_socket[0] + socket_size, left_socket[1] + socket_size),
+                          (255, 255, 255), -1)
 
-        # Right socket
-        cv2.rectangle(canvas, (x + w - padding - socket_size, y + (h - socket_size) // 2),
-                      (x + w - padding, y + (h + socket_size) // 2),
-                      (255, 255, 255), -1)
+        if self.right_child:
+            self.right_child.draw(canvas)
+        else:
+            cv2.rectangle(canvas, (right_socket[0], right_socket[1]),
+                          (right_socket[0] + socket_size, right_socket[1] + socket_size),
+                          (255, 255, 255), -1)
 
-        # Center operator symbol
+        # Draw operator symbol
         font = cv2.FONT_HERSHEY_SIMPLEX
         text_size = cv2.getTextSize(self.label, font, 0.6, 2)[0]
         text_x = x + (w - text_size[0]) // 2
         text_y = y + (h + text_size[1]) // 2
         cv2.putText(canvas, self.label, (text_x, text_y),
                     font, 0.6, (0, 0, 0), 2, cv2.LINE_AA)
+
+    def move(self, dx, dy):
+        self.x += dx
+        self.y += dy
+        if self.left_child:
+            self.left_child.move(dx, dy)
+        if self.right_child:
+            self.right_child.move(dx, dy)
+
+    def get_socket_rects(self):
+        # Return the left and right socket positions
+        socket_size = 25
+        padding = 10
+        h = self.height
+        left = (self.x + padding, self.y + (h - socket_size) // 2, socket_size, socket_size)
+        right = (self.x + self.width - padding - socket_size, self.y + (h - socket_size) // 2, socket_size, socket_size)
+        return left, right
+
+    def generate_code(self):
+        left = self.left_child.generate_code() if self.left_child else "?"
+        right = self.right_child.generate_code() if self.right_child else "?"
+        return f"({left} {self.operator} {right})"
